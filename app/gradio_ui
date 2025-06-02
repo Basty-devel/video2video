@@ -1,0 +1,57 @@
+import gradio as gr
+import openai
+import os
+import subprocess
+import tempfile
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+def analyze_video(video):
+    input_path = video
+    tmp_dir = tempfile.mkdtemp()
+
+    # Step 1: Extract audio using ffmpeg
+    audio_path = os.path.join(tmp_dir, "audio.wav")
+    subprocess.run(["ffmpeg", "-i", input_path, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audio_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    # Step 2: Transcribe with OpenAI Whisper
+    with open(audio_path, "rb") as audio_file:
+        transcript_response = openai.Audio.transcribe("whisper-1", audio_file)
+    transcript = transcript_response["text"]
+
+    # Step 3: Analyze content via GPT
+    gpt_prompt = f"""
+Analysiere den folgenden Transkript eines Videos. 
+1. Welche 3 Hauptthemen sind erkennbar?
+2. Was ist die Stimmung (z. B. traurig, informativ, freudig)?
+
+Transkript:
+"""
+{transcript}
+"""
+Antworte in folgendem Format:
+Themen: ...
+Stimmung: ...
+"""
+    chat_response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": gpt_prompt}]
+    )
+    analysis = chat_response.choices[0].message.content.strip()
+
+    # Step 4: Return combined output
+    return f"📄 Transkript:
+{transcript}
+
+🧠 Analyse:
+{analysis}"
+
+iface = gr.Interface(
+    fn=analyze_video,
+    inputs=gr.Video(label="🎥 Lade dein Video hoch"),
+    outputs=gr.Textbox(label="KI-Auswertung"),
+    title="🎬 Video2Video AI – Whisper + GPT Analyse",
+    description="Extrahiere Sprache aus deinem Video, analysiere die Inhalte per GPT-4 und erhalte eine Zusammenfassung."
+)
+
+iface.launch()
